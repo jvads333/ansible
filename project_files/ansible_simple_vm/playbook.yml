@@ -1,0 +1,58 @@
+- hosts: localhost
+  become: yes
+  vars:
+    vm_name: vm12
+    base_img: /var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img
+    vm_disk: /var/lib/libvirt/images/{{ vm_name }}.qcow2
+    seed_iso: /var/lib/libvirt/images/{{ vm_name }}-seed.iso
+    memory_mb: 1024
+    vcpus: 1
+    disk_size: 10G
+    cloud_image_url: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+    bridge_name: kvmbr1
+
+  tasks:
+    - name: Ensure required packages are present (Debian/Ubuntu)
+      apt:
+        name:
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - cloud-image-utils
+          - virtinst
+        state: present
+        update_cache: yes
+
+    - name: Download cloud image if missing
+      get_url:
+        url: "{{ cloud_image_url }}"
+        dest: "{{ base_img }}"
+        mode: '0644'
+      args:
+        creates: "{{ base_img }}"
+
+    - name: Create qcow2 disk (backed by cloud image)
+      command: >
+        qemu-img create -f qcow2 -b {{ base_img }} -F qcow2 {{ vm_disk }} {{ disk_size }}
+      args:
+        creates: "{{ vm_disk }}"
+
+    - name: Create cloud-init seed ISO with network-config
+      command: >
+        cloud-localds --network-config=network-config {{ seed_iso }} user-data meta-data
+      args:
+        chdir: "{{ playbook_dir }}"
+        creates: "{{ seed_iso }}"
+
+    - name: Create VM (virt-install import) and attach to bridge kvmbr1
+      command: >
+        virt-install --name {{ vm_name }}
+                     --memory {{ memory_mb }}
+                     --vcpus {{ vcpus }}
+                     --disk path={{ vm_disk }},format=qcow2
+                     --disk path={{ seed_iso }},device=cdrom
+                     --network bridge={{ bridge_name }},model=virtio
+                     --import
+                     --noautoconsole
+      args:
+        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"

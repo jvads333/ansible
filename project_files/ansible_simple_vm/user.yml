@@ -1,0 +1,9 @@
+#cloud-config
+hostname: simple-vm
+users:
+  - name: jeeva
+    shell: /bin/bash
+    sudo: All=(ALL) NOPASSWD:ALL
+    passwd: "$6$WPQQd.4Zx8QF.kD1$srrnXMfFsP5Wyi0egwpmZOtjUyVMPCiW/Lavb1CMZS/pzE5gcilZBd94dLuVIjzl42yDqw9zWbwlUxa1CHZ8j."
+    chpasswd:
+      expire: fasle
