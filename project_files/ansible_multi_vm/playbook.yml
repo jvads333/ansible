@@ -8,6 +8,13 @@
     playbook_tmp_dir: "{{ playbook_dir }}/tmp"
 
   pre_tasks:
+    - name: Create temporary working directory
+      file:
+        path: "{{ playbook_tmp_dir }}"
+        state: directory
+        mode: '0755'  
+      run_once: true
+
     - name: Ensure required packages are present (run once)
       apt:
         name:
@@ -111,5 +118,5 @@
         path: "{{ playbook_tmp_dir }}"
         state: absent
       run_once: true
-      
+
     
