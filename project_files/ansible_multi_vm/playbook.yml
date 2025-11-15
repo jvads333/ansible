@@ -5,7 +5,7 @@
   gather_facts: false
 
   vars:
-    playbook_tmp_dir: "{{ playbook_dir | default('.') }}"
+    playbook_tmp_dir: "{{ playbook_dir }}/tmp"
 
   pre_tasks:
     - name: Ensure required packages are present (run once)
@@ -104,3 +104,12 @@
                      --noautoconsole
       args:
         creates: "/etc/libvirt/qemu/{{ inventory_hostname }}.xml"
+
+  post_tasks:
+    - name: Clean up temporary cloud-init files
+      file:
+        path: "{{ playbook_tmp_dir }}"
+        state: absent
+      run_once: true
+      
+    
