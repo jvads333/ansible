@@ -1,0 +1,274 @@
+meta-data.yml file
+
+instance-id: simple-vm-01
+--------------------------------
+This is a unique identifier for the VM used by cloud-init.
+
+• Cloud-init uses it to determine if the VM is a "new instance".
+• If you change the instance-id, cloud-init performs full initialization again.
+• It helps cloud-init avoid reusing cached data from previous boots.
+• Think of it as the VM’s cloud-init UUID.
+
+local-hostname: jeeva
+--------------------------------
+This sets the hostname of the virtual machine.
+
+• It controls the machine’s name shown in the terminal prompt.
+• The system hostname becomes "jeeva".
+• It updates /etc/hostname inside the VM.
+
+Note:
+This does NOT set the username — only the machine’s hostname.
+
+
+#############################################################################################
+
+@@@@ network.yml file @@@@
+
+version: 2
+--------------------------------
+This indicates the Netplan configuration version.
+"version: 2" is required for all modern Ubuntu cloud images
+to use Netplan format.
+
+ethernets:
+--------------------------------
+This section defines Ethernet network interfaces.
+Everything under this key describes individual network cards.
+
+  enp1s0:
+  --------------------------------
+  This is the name of the network interface inside the VM.
+  Cloud-init will apply the following settings to this NIC.
+
+    dhcp4: false
+    --------------------------------
+    Disables DHCP for IPv4.
+    This means the interface will NOT request an IP address
+    automatically — it must be configured statically.
+
+    addresses:
+      - 10.10.10.11/24
+    --------------------------------
+    This assigns a static IPv4 address to the interface.
+    • IP: 10.10.10.11
+    • Subnet mask: /24 (255.255.255.0)
+
+    gateway4: 10.10.10.10
+    --------------------------------
+    This sets the default gateway for IPv4.
+    All traffic not in the local subnet goes through 10.10.10.10.
+
+    nameservers:
+      addresses: [8.8.8.8, 1.1.1.1]
+    --------------------------------
+    Defines DNS servers.
+    • 8.8.8.8 = Google DNS
+    • 1.1.1.1 = Cloudflare DNS
+    The VM uses these to resolve domain names.
+
+#############################################################################################
+
+
+@@@@  user.yml file @@@@
+
+#cloud-config
+--------------------------------
+This tells cloud-init that this file uses cloud-config syntax.
+All Ubuntu cloud images expect this header.
+
+hostname: simple-vm
+--------------------------------
+Sets the machine's hostname to "simple-vm".
+This is what you will see in the terminal prompt:
+  jeeva@simple-vm:~$
+
+users:
+--------------------------------
+Defines user accounts that cloud-init will create.
+
+  - name: jeeva
+  --------------------------------
+  Creates a user named "jeeva".
+
+    shell: /bin/bash
+    --------------------------------
+    Sets the default shell for this user to bash.
+
+    lock_passwd: false
+    --------------------------------
+    Prevents the account from being locked.
+    Without this, cloud-init may lock the user if it detects
+    an invalid password or YAML formatting issue.
+    Setting this ensures the account stays usable.
+
+    sudo: ['All=(ALL) NOPASSWD:ALL']
+    --------------------------------
+    Gives this user full sudo privileges WITHOUT requiring a password.
+    Equivalent to adding this line in /etc/sudoers:
+      jeeva ALL=(ALL) NOPASSWD:ALL
+
+    passwd: "$6$2qLnuGLOJaWj9Ms9$HNkW7hXJ8K/bCjjXsqt9xLEDnXkPh9l9xgN5Q8ewjOG6dBz1a66Nn8HQRTpSNGE3gXLg4.bso5ZbK2Kv1fNB51"
+    --------------------------------
+    This is the SHA-512 hashed password for the user "jeeva".
+    It begins with "$6$", which indicates SHA-512 crypt format.
+    Cloud-init will place this hash into /etc/shadow.
+
+chpasswd:
+  expire: false
+--------------------------------
+Ensures the password does NOT expire on first login.
+If this were "true", the user would be forced to change the password.
+
+
+#############################################################################################
+
+
+@@@@ playbook.yml file @@@@
+
+- hosts: localhost
+--------------------------------
+Run this playbook on the local machine (the KVM/libvirt host).
+All Ansible tasks below will execute locally.
+
+  become: yes
+  --------------------------------
+  Use sudo (become root) when needed — required for libvirt/QEMU operations.
+
+  vars:
+    vm_name: vm12
+    --------------------------------
+    Name of the virtual machine to create.
+
+    base_img: /var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img
+    --------------------------------
+    Path where the downloaded Ubuntu cloud image will be stored.
+
+    vm_disk: /var/lib/libvirt/images/{{ vm_name }}.qcow2
+    --------------------------------
+    The new, writable VM disk that will be created from the base image.
+
+    seed_iso: /var/lib/libvirt/images/{{ vm_name }}-seed.iso
+    --------------------------------
+    The cloud-init ISO that contains user-data, meta-data, and network config.
+
+    memory_mb: 1024
+    --------------------------------
+    Amount of RAM the VM will use (1 GB).
+
+    vcpus: 1
+    --------------------------------
+    Number of virtual CPUs assigned to the VM.
+
+    disk_size: 10G
+    --------------------------------
+    Size of the qcow2 disk.
+
+    cloud_image_url: https://cloud-images.ubuntu.com/jammy/...img
+    --------------------------------
+    URL of the official Ubuntu 22.04 cloud image to download.
+
+    bridge_name: kvmbr1
+    --------------------------------
+    Name of the Linux bridge the VM will attach to on the host.
+
+---------------------------------------------------------
+TASKS
+---------------------------------------------------------
+
+- name: Ensure required packages are present (Debian/Ubuntu)
+  apt:
+    name:
+      - qemu-kvm
+      - libvirt-daemon-system
+      - libvirt-clients
+      - cloud-image-utils
+      - virtinst
+    state: present
+    update_cache: yes
+--------------------------------
+Installs all software needed for:
+• KVM/QEMU virtualization
+• Libvirt management
+• cloud-localds (to generate seed ISOs)
+• virt-install (to create VMs)
+
+---------------------------------------------------------
+
+- name: Check if cloud image already exists
+  stat:
+    path: "{{ base_img }}"
+  register: img_stat
+--------------------------------
+Checks if the Ubuntu cloud image is already downloaded.
+Stores result in img_stat so we can skip download if it exists.
+
+---------------------------------------------------------
+
+- name: Download cloud image if missing
+  get_url:
+    url: "{{ cloud_image_url }}"
+    dest: "{{ base_img }}"
+    mode: '0644'
+    force: no
+  when: not img_stat.stat.exists
+--------------------------------
+Downloads the cloud image ONLY if it is not already present.
+"force: no" prevents overwriting existing images.
+
+---------------------------------------------------------
+
+- name: Create qcow2 disk (backed by cloud image)
+  command: >
+    qemu-img create -f qcow2 -b {{ base_img }} -F qcow2 {{ vm_disk }} {{ disk_size }}
+  args:
+    creates: "{{ vm_disk }}"
+--------------------------------
+Creates a new qcow2 disk for the VM:
+• uses the base image as a backing file (copy-on-write)
+• size = 10G
+• only creates the disk if it doesn’t already exist
+
+---------------------------------------------------------
+
+- name: Create cloud-init seed ISO (NoCloud) with network-config
+  command: >
+    cloud-localds --network-config=network.yml {{ seed_iso }} user.yml meta-data.yml
+  args:
+    chdir: "{{ playbook_dir }}"
+    creates: "{{ seed_iso }}"
+--------------------------------
+Generates a NoCloud cloud-init ISO containing:
+• user-data (user.yml)
+• meta-data (meta-data.yml)
+• network config (network.yml)
+
+The ISO is used by the VM at boot for initial configuration.
+"creates:" prevents regenerating it if it already exists.
+
+---------------------------------------------------------
+
+- name: Create VM (virt-install import) and attach to bridge kvmbr1
+  command: >
+    virt-install --name {{ vm_name }}
+                 --memory {{ memory_mb }}
+                 --vcpus {{ vcpus }}
+                 --disk path={{ vm_disk }},format=qcow2
+                 --disk path={{ seed_iso }},device=cdrom
+                 --network bridge={{ bridge_name }},model=virtio
+                 --os-variant ubuntu22.04
+                 --import
+                 --noautoconsole
+  args:
+    creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+--------------------------------
+Creates the virtual machine using virt-install:
+• assigns RAM + CPU
+• attaches main qcow2 disk
+• attaches cloud-init ISO as CD-ROM
+• connects NIC to the host bridge kvmbr1
+• imports an existing cloud image instead of installing from ISO
+• does NOT open a console automatically
+• will NOT recreate the VM if the XML config already exists
+
+This completes the VM deployment.
