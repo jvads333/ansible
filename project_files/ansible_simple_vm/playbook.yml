@@ -23,13 +23,19 @@
         state: present
         update_cache: yes
 
+    - name: Check if cloud image already exists
+      stat:
+        path: "{{ base_img }}"
+      register: img_stat
+
     - name: Download cloud image if missing
       get_url:
         url: "{{ cloud_image_url }}"
         dest: "{{ base_img }}"
         mode: '0644'
-      args:
-        creates: "{{ base_img }}"
+        # do not overwrite if file already present
+        force: no
+      when: not img_stat.stat.exists
 
     - name: Create qcow2 disk (backed by cloud image)
       command: >
@@ -37,9 +43,9 @@
       args:
         creates: "{{ vm_disk }}"
 
-    - name: Create cloud-init seed ISO with network-config
+    - name: Create cloud-init seed ISO (NoCloud) with network-config
       command: >
-        cloud-localds --network-config=network-config {{ seed_iso }} user-data meta-data
+        cloud-localds --network-config=network.yml {{ seed_iso }} user.yml meta-data.yml
       args:
         chdir: "{{ playbook_dir }}"
         creates: "{{ seed_iso }}"
@@ -52,7 +58,9 @@
                      --disk path={{ vm_disk }},format=qcow2
                      --disk path={{ seed_iso }},device=cdrom
                      --network bridge={{ bridge_name }},model=virtio
+                     --os-variant ubuntu22.04
                      --import
                      --noautoconsole
       args:
         creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+
