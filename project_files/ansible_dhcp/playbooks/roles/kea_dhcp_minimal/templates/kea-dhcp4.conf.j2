@@ -2,21 +2,37 @@
   "Dhcp4": {
     "renew-timer": 600,
     "rebind-timer": 1200,
-    "valid-lifetime": {{ lease_time }},
+    "valid-lifetime": {{ lease_time | default(3600) }},
     "interfaces-config": {
-      "interfaces": [ "{{ kea_iface }}" ]
+      "interfaces": [ "{{ kea_iface | default('enp1s0') }}" ]
     },
+    "lease-database": {
+      "type": "memfile",
+      "lfc-interval": 3600
+    },
+    "expired-leases-processing": {
+      "reclaim-timer-wait-time": 10,
+      "flush-reclaimed-timer-wait-time": 25,
+      "hold-reclaimed-time": 3600,
+      "max-reclaim-leases": 100,
+      "max-reclaim-time": 250,
+      "unwarned-reclaim-cycles": 5
+    },
+    "renew-timer": 900,
+    "rebind-timer": 1800,
+    "valid-lifetime": {{ lease_time | default(3600) }},
+    "option-data": [
+      { "name": "routers", "data": "{{ router | default('10.10.10.10') }}" },
+      { "name": "domain-name-servers", "data": "{{ dns_servers | default(['8.8.8.8','1.1.1.1']) | join(',') }}" },
+      { "name": "domain-name", "data": "{{ domain_name | default('sne25.nl') }}" }
+    ],
     "subnet4": [
       {
-        "subnet": "{{ subnet_v4 }}",
+        "subnet": "{{ subnet_v4 | default('10.10.10.0/24') }}",
         "pools": [
-          { "pool": "{{ pool_start }} - {{ pool_end }}" }
-        ],
-        "option-data": [
-          { "name": "routers", "csv-format": "{{ router }}" },
-          { "name": "domain-name-servers", "csv-format": "{{ dns_servers | join(',') }}" },
-          { "name": "domain-name", "csv-format": "sne25.nl" }
-        ]{% if dhcp_reservations | length > 0 %},
+          { "pool": "{{ pool_start | default('10.10.10.100') }} - {{ pool_end | default('10.10.10.200') }}" }
+        ]
+        {% if dhcp_reservations | default([]) | length > 0 %},
         "reservations": [
 {% for host in dhcp_reservations -%}
           {
@@ -25,18 +41,14 @@
             "client-hostname": "{{ host.hostname | default('host' ~ loop.index) }}"
           }{% if not loop.last %},{% endif %}
 {% endfor -%}
-        ]{% endif %}
+        ]
+        {% endif %}
       }
     ]
   },
   "Logging": {
     "loggers": [
-      {
-        "name": "kea-dhcp4",
-        "severity": "INFO",
-        "debuglevel": 0,
-        "flush": true
-      }
+      { "name": "kea-dhcp4", "severity": "INFO", "debuglevel": 0, "flush": true }
     ]
   }
 }
