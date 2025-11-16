@@ -85,8 +85,8 @@
       vars:
         addr: "{{ vm_ip }}"
         gw: "{{ gateway }}"
-        nameservers: "{{ nameservers }}"
-        iface_name: "{{ iface_name }}"
+        nameservers: ["8.8.8.8","1.1.1.1"]
+        iface_name: "enp1s0"
 
     - name: Create qcow2 disk (backed by base image) for {{ inventory_hostname }}
       command: >
