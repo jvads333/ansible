@@ -22,7 +22,7 @@
 
 - name: Install isc-kea metapackage (Kea DHCP)
   apt:
-    name: isc-kea
+    name: isc-kea-dhcp4
     state: present
   become: true
 
