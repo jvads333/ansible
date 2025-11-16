@@ -3,7 +3,7 @@
 - name: Install kea package
   apt:
     name:
-      - kea-dhcp4
+      - isc-kea-dhcp4
     state: present
 
 - name: Ensure kea config directory exists
