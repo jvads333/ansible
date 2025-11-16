@@ -2,23 +2,27 @@
 - name: Build dhcp_reservations on control node
   hosts: localhost
   gather_facts: false
+  vars:
+    vm_group: vm_defs
   tasks:
-    - name: Build reservations list from inventory group vm_defs
+    - name: Initialize dhcp_reservations
+      set_fact:
+        dhcp_reservations: []
+
+    - name: Build reservations from inventory (explicit loop)
       set_fact:
         dhcp_reservations: >-
-          {{
-            groups['vm_defs'] | map('extract', hostvars) 
-            | map('community.general.dict_kv', []) | list
-          }}
-      # simpler explicit loop below if the above fails (keeps robust)
+          {{ dhcp_reservations + [ { 'mac': hostvars[item].mac | default(''), 'ip': hostvars[item].vm_ip | default(''), 'hostname': item } ] }}
+      loop: "{{ groups[vm_group] | default([]) }}"
+      when: (hostvars[item].mac is defined) and (hostvars[item].vm_ip is defined)
 
-    - name: Build reservations (explicit loop, robust)
-      set_fact:
-        dhcp_reservations: "{{ dhcp_reservations | default([]) + [ {'mac': hostvars[item].mac | default(''), 'ip': hostvars[item].vm_ip, 'hostname': item } ] }}"
-      loop: "{{ groups['vm_defs'] }}"
-      when: hostvars[item].mac is defined and hostvars[item].vm_ip is defined
+    - name: Warn about hosts missing mac or vm_ip
+      debug:
+        msg: "Host {{ item }} skipped: missing mac or vm_ip in inventory"
+      loop: "{{ groups[vm_group] | default([]) }}"
+      when: not ((hostvars[item].mac is defined) and (hostvars[item].vm_ip is defined))
 
-    - name: Ensure dhcp_reservations defined
+    - name: Ensure dhcp_reservations exists (empty list if none)
       set_fact:
         dhcp_reservations: "{{ dhcp_reservations | default([]) }}"
 
