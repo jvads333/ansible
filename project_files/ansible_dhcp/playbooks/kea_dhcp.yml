@@ -45,13 +45,16 @@
     - role: kea_dhcp_minimal
       dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
 
-- name: Wait for Kea to be ready (UDP 67) from controller
-  hosts: localhost
-  gather_facts: false
+- name: Wait until Kea listens on UDP/67 (check on dhcp host)
+  hosts: dhcp
+  gather_facts: no
+  become: yes
   tasks:
-    - name: Wait for DHCP UDP port 67 on dhcp host
-      wait_for:
-        host: "{{ hostvars['dhcp'].vm_ip }}"
-        port: 67
-        timeout: 30
-        state: started
+    - name: Retry until Kea listens on UDP/67
+      shell: "ss -unlp | egrep ':67\\b' || true"
+      register: kea_listener
+      retries: 20
+      delay: 6
+      until: kea_listener.stdout != ""
+      changed_when: false
+
