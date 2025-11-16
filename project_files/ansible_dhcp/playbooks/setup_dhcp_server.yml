@@ -10,19 +10,21 @@
       set_fact:
         dhcp_reservations: []
 
-    - name: Build reservations from inventory (vm_defs)
+    - name: Build reservations (Kea format) from inventory (vm_defs)
       set_fact:
-        dhcp_reservations: "{{ dhcp_reservations + [ {
-          'mac': hostvars[item].mac | default(''),
-          'ip': hostvars[item].vm_ip | default(''),
-          'hostname': hostvars[item].inventory_hostname | default(item)
-        } ] }}"
+        dhcp_reservations: >-
+          {{ dhcp_reservations + [ {
+            'hw-address': hostvars[item].mac | default(''),
+            'ip-address' : hostvars[item].vm_ip | default(''),
+            'hostname'   : hostvars[item].inventory_hostname | default(item)
+          } ] }}
       loop: "{{ groups[vm_group] | default([]) }}"
       when: groups[vm_group] is defined
 
     - name: Debug - show built dhcp_reservations
       debug:
         var: dhcp_reservations
+
 
 - name: Deploy distro Kea DHCP server to DHCP host(s)
   hosts: dhcp
@@ -31,6 +33,9 @@
     # Adjust subnet/pool if your lab uses different addressing
     kea_subnet: "10.10.10.0/24"
     kea_pool: "10.10.10.100 - 10.10.10.200"
+    kea_gateway: "10.10.10.10"
+    kea_dns: "8.8.8.8,8.8.4.4"
+
     # Path and template name for kea config
     kea_conf_path: /etc/kea/kea-dhcp4.conf
     kea_conf_template: kea-dhcp4.conf.j2
@@ -64,9 +69,8 @@
         group: root
         mode: '0644'
       vars:
+        # pass only the reservations; don't re-template kea_subnet/kea_pool (they are defined at play level)
         dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
-        kea_subnet: "{{ kea_subnet }}"
-        kea_pool: "{{ kea_pool }}"
       notify: Restart kea
 
     - name: Detect kea systemd unit (common names)
