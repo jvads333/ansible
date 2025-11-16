@@ -63,6 +63,7 @@
         mode: '0644'
       vars:
         hostname: "{{ inventory_hostname }}"
+        ssh_pub_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') | default(lookup('file','~/.ssh/id_rsa.pub'), true) }}"
 
     - name: Write meta-data for {{ inventory_hostname }}
       copy:
