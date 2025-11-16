@@ -26,32 +26,32 @@
         var: dhcp_reservations
 
 
-- name: Deploy distro Kea DHCP server to DHCP host(s)
+- name: Deploy Kea DHCP server (distro version only)
   hosts: dhcp
   become: true
   vars:
-    # Adjust subnet/pool if your lab uses different addressing
     kea_subnet: "10.10.10.0/24"
     kea_pool: "10.10.10.100 - 10.10.10.200"
     kea_gateway: "10.10.10.10"
     kea_dns: "8.8.8.8,8.8.4.4"
 
-    # Path and template name for kea config
     kea_conf_path: /etc/kea/kea-dhcp4.conf
     kea_conf_template: kea-dhcp4.conf.j2
+
+    # hardcoded distro service name (NO ISC)
+    kea_service_name: "kea-dhcp4-server"
 
   tasks:
     - name: Ensure apt cache updated
       apt:
         update_cache: yes
 
-    - name: Install distro Kea packages (kea-common, kea-dhcp4-server)
+    - name: Install pure Kea packages
       apt:
         name:
           - kea-common
           - kea-dhcp4-server
         state: present
-      register: kea_install
 
     - name: Ensure kea config directory exists
       file:
@@ -61,7 +61,7 @@
         group: root
         mode: '0755'
 
-    - name: Deploy kea config (template) with inventory reservations
+    - name: Deploy kea config (template)
       template:
         src: "{{ kea_conf_template }}"
         dest: "{{ kea_conf_path }}"
@@ -69,40 +69,14 @@
         group: root
         mode: '0644'
       vars:
-        # pass only the reservations; don't re-template kea_subnet/kea_pool (they are defined at play level)
         dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
       notify: Restart kea
-
-    - name: Detect kea systemd unit (common names)
-      stat:
-        path: /lib/systemd/system/kea-dhcp4-server.service
-      register: s_unit_keadhcp
-
-    - name: Detect isc unit alternative
-      stat:
-        path: /lib/systemd/system/isc-kea-dhcp4-server.service
-      register: s_unit_isc
-
-    - name: Set kea_service_name fact
-      set_fact:
-        kea_service_name: >-
-          {% if s_unit_isc.stat.exists %}
-            isc-kea-dhcp4-server
-          {% elif s_unit_keadhcp.stat.exists %}
-            kea-dhcp4-server
-          {% else %}
-            kea-dhcp4-server
-          {% endif %}
-
-    - name: Debug - show detected service name
-      debug:
-        var: kea_service_name
 
     - name: Reload systemd (safe)
       command: systemctl daemon-reload
       changed_when: false
 
-    - name: Ensure Kea service enabled and started
+    - name: Enable & start Kea DHCP service
       service:
         name: "{{ kea_service_name }}"
         enabled: yes
@@ -121,14 +95,6 @@
     - name: Debug - lines with :67 (diagnostic)
       debug:
         var: ss_out.stdout_lines | select('search', ':67') | list
-
-    - name: Optionally allow DHCP port in ufw (if ufw exists)
-      ufw:
-        rule: allow
-        proto: udp
-        port: '67'
-      when: ansible_facts.packages.ufw is defined
-      ignore_errors: yes
 
   handlers:
     - name: Restart kea
