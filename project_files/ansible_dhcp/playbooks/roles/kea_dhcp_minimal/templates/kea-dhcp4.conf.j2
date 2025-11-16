@@ -28,8 +28,7 @@
         "subnet": "{{ subnet_v4 | default('10.10.10.0/24') }}",
         "pools": [
           { "pool": "{{ pool_start | default('10.10.10.100') }} - {{ pool_end | default('10.10.10.200') }}" }
-        ]
-        {% if dhcp_reservations | default([]) | length > 0 %},
+        ]{% if dhcp_reservations | default([]) | length > 0 %},
         "reservations": [
 {% for host in dhcp_reservations -%}
           {
