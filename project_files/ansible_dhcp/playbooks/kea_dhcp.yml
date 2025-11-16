@@ -30,7 +30,7 @@
   hosts: dhcp
   become: yes
   vars:
-    kea_iface: "{{ iface_name | default('enp1s0') }}"
+    kea_iface: "enp1s0"
     subnet_v4: "10.10.10.0/24"
     pool_start: "10.10.10.100"
     pool_end: "10.10.10.200"
