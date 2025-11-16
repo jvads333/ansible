@@ -22,13 +22,13 @@
 
 - name: Install isc-kea metapackage (Kea DHCP)
   apt:
-    name: isc-kea-dhcp4
+    name: isc-kea-dhcp4-server
     state: present
   become: true
 
 - name: Ensure kea-dhcp4 service enabled and started (if package provides it)
   service:
-    name: isc-kea-dhcp4
+    name: isc-kea-dhcp4-server.service
     enabled: yes
     state: started
   become: true
