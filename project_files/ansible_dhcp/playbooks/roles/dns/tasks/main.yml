@@ -43,9 +43,3 @@
     path: /var/run/named.pid
     timeout: 10
   changed_when: false
-
-handlers:
-  - name: restart bind9
-    service:
-      name: bind9
-      state: restarted

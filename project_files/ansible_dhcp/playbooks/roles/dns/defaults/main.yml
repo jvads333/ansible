@@ -1,5 +1,0 @@
----
-kea_package: kea-dhcp4-server
-kea_service_name: kea-dhcp4-server
-kea_conf_path: /etc/kea/kea-dhcp4.conf
-kea_conf_template: kea-dhcp4.conf.j2

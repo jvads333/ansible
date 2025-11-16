@@ -1,5 +1,5 @@
 ---
-- name: Restart kea
+- name: restart bind9
   service:
-    name: "{{ kea_service_name }}"
+    name: bind9
     state: restarted
