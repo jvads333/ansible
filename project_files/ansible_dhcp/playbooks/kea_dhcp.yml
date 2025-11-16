@@ -1,0 +1,53 @@
+---
+- name: Build dhcp_reservations on control node
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Build reservations list from inventory group vm_defs
+      set_fact:
+        dhcp_reservations: >-
+          {{
+            groups['vm_defs'] | map('extract', hostvars) 
+            | map('community.general.dict_kv', []) | list
+          }}
+      # simpler explicit loop below if the above fails (keeps robust)
+
+    - name: Build reservations (explicit loop, robust)
+      set_fact:
+        dhcp_reservations: "{{ dhcp_reservations | default([]) + [ {'mac': hostvars[item].mac | default(''), 'ip': hostvars[item].vm_ip, 'hostname': item } ] }}"
+      loop: "{{ groups['vm_defs'] }}"
+      when: hostvars[item].mac is defined and hostvars[item].vm_ip is defined
+
+    - name: Ensure dhcp_reservations defined
+      set_fact:
+        dhcp_reservations: "{{ dhcp_reservations | default([]) }}"
+
+    - name: Show reservations (debug)
+      debug:
+        var: dhcp_reservations
+
+- name: Configure Kea DHCP on dhcp VM
+  hosts: dhcp
+  become: yes
+  vars:
+    kea_iface: "{{ iface_name | default('enp1s0') }}"
+    subnet_v4: "10.10.10.0/24"
+    pool_start: "10.10.10.100"
+    pool_end: "10.10.10.200"
+    router: "10.10.10.10"
+    dns_servers: ["8.8.8.8","1.1.1.1"]
+    lease_time: 86400
+  roles:
+    - role: kea_dhcp_minimal
+      dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
+
+- name: Wait for Kea to be ready (UDP 67) from controller
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Wait for DHCP UDP port 67 on dhcp host
+      wait_for:
+        host: "{{ hostvars['dhcp'].vm_ip }}"
+        port: 67
+        timeout: 30
+        state: started
