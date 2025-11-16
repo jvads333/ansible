@@ -1,16 +1,5 @@
 ---
-# role defaults for kea_dhcp_minimal
-kea_iface: "enp1s0"
-subnet_v4: "10.10.10.0/24"
-pool_start: "10.10.10.100"
-pool_end: "10.10.10.200"
-router: "10.10.10.10"
-dns_servers:
-  - "8.8.8.8"
-  - "1.1.1.1"
-lease_time: 86400
+kea_package: kea-dhcp4-server
+kea_service_name: kea-dhcp4-server
 kea_conf_path: /etc/kea/kea-dhcp4.conf
-# kea_service_name will be detected at runtime by the role; override only if necessary
-dhcp_reservations: []
-domain_name: "sne25.nl"
-
+kea_conf_template: kea-dhcp4.conf.j2

@@ -1,0 +1,60 @@
+---
+- name: Build dhcp_reservations on control node
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vm_group: vm_defs
+  tasks:
+    - name: Initialize dhcp_reservations
+      set_fact:
+        dhcp_reservations: []
+
+    - name: Build reservations from inventory (explicit loop)
+      set_fact:
+        dhcp_reservations: >-
+          {{ dhcp_reservations + [ { 'mac': hostvars[item].mac | default(''), 'ip': hostvars[item].vm_ip | default(''), 'hostname': item } ] }}
+      loop: "{{ groups[vm_group] | default([]) }}"
+      when: (hostvars[item].mac is defined) and (hostvars[item].vm_ip is defined)
+
+    - name: Warn about hosts missing mac or vm_ip
+      debug:
+        msg: "Host {{ item }} skipped: missing mac or vm_ip in inventory"
+      loop: "{{ groups[vm_group] | default([]) }}"
+      when: not ((hostvars[item].mac is defined) and (hostvars[item].vm_ip is defined))
+
+    - name: Ensure dhcp_reservations exists (empty list if none)
+      set_fact:
+        dhcp_reservations: "{{ dhcp_reservations | default([]) }}"
+
+    - name: Show reservations (debug)
+      debug:
+        var: dhcp_reservations
+
+- name: Configure Kea DHCP on dhcp VM
+  hosts: dhcp
+  become: yes
+  vars:
+    kea_iface: "enp1s0"
+    subnet_v4: "10.10.10.0/24"
+    pool_start: "10.10.10.100"
+    pool_end: "10.10.10.200"
+    router: "10.10.10.10"
+    dns_servers: ["8.8.8.8","1.1.1.1"]
+    lease_time: 86400
+  roles:
+    - role: kea_dhcp_minimal
+      dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
+
+- name: Wait until Kea listens on UDP/67 (check on dhcp host)
+  hosts: dhcp
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: Retry until Kea listens on UDP/67
+      shell: "ss -unlp | egrep ':67\\b' || true"
+      register: kea_listener
+      retries: 5
+      delay: 6
+      until: kea_listener.stdout != ""
+      changed_when: false
+

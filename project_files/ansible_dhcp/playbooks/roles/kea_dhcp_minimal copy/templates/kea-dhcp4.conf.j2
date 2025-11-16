@@ -1,0 +1,29 @@
+{
+  "Dhcp4": {
+    "interfaces-config": {
+      "interfaces": [ "enp1s0" ]
+    },
+
+    "subnet4": [
+      {
+        "subnet": "10.0.5.0/24",
+
+        "option-data": [
+          { "name": "routers", "data": "10.0.5.1" },
+          { "name": "domain-name-servers", "data": "10.0.5.102" }
+        ],
+
+        "reservations": [
+          {
+            "hw-address": "52:54:00:aa:bb:03",
+            "ip-address": "10.0.5.103"
+          },
+          {
+            "hw-address": "52:54:00:aa:bb:04",
+            "ip-address": "10.0.5.104"
+          }
+        ]
+      }
+    ]
+  }
+}

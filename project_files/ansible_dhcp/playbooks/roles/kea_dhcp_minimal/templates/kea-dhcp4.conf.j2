@@ -1,50 +1,28 @@
 {
   "Dhcp4": {
-    "renew-timer": 600,
-    "rebind-timer": 1200,
-    "valid-lifetime": 86400,
-    "interfaces-config": {
-      "interfaces": [ "enp1s0" ]
-    },
-    "lease-database": {
-      "type": "memfile",
-      "lfc-interval": 3600
-    },
-    "expired-leases-processing": {
-      "reclaim-timer-wait-time": 10,
-      "flush-reclaimed-timer-wait-time": 25,
-      "hold-reclaimed-time": 3600,
-      "max-reclaim-leases": 100,
-      "max-reclaim-time": 250,
-      "unwarned-reclaim-cycles": 5
-    },
-    "option-data": [
-      { "name": "routers", "data": "10.10.10.10" },
-      { "name": "domain-name-servers", "data": "8.8.8.8,1.1.1.1" },
-      { "name": "domain-name", "data": "sne25.nl" }
-    ],
+    "valid-lifetime": 600,
+    "renew-timer": 300,
+    "rebind-timer": 400,
+
     "subnet4": [
       {
         "subnet": "10.10.10.0/24",
-        "pools": [
-          { "pool": "10.10.10.100 - 10.10.10.200" }
-        ]{% if dhcp_reservations | default([]) | length > 0 %},
+        "pools": [ { "pool": "10.10.10.100 - 10.10.10.200" } ],
+        "option-data": [
+          { "name": "routers", "data": "10.10.10.1" },
+          { "name": "domain-name-servers", "data": "8.8.8.8,8.8.4.4" }
+        ],
+
         "reservations": [
-{% for host in dhcp_reservations -%}
+          {% for r in dhcp_reservations %}
           {
-            "hw-address": "{{ host.mac | upper }}",
-            "ip-address": "{{ host.ip }}",
-            "hostname": "{{ host.hostname | default('host' ~ loop.index) }}"
+            "hw-address": "{{ r.mac }}",
+            "ip-address": "{{ r.ip }}",
+            "hostname": "{{ r.hostname }}"
           }{% if not loop.last %},{% endif %}
-{% endfor -%}
+          {% endfor %}
         ]
-        {% endif %}
       }
-    ]
-  },
-  "Logging": {
-    "loggers": [
-      { "name": "kea-dhcp4", "severity": "INFO", "debuglevel": 0, "flush": true }
     ]
   }
 }
