@@ -4,7 +4,7 @@
     "renew-timer": 300,
     "rebind-timer": 400,
     "interfaces-config": {
-      "interfaces": [ "{{ kea_server_iface | default('enp1s0') }}" ]
+      "interfaces": {{ [ (kea_server_iface | default('enp1s0')) ] | to_json }}
     },
 
     "subnet4": [
@@ -16,8 +16,8 @@
         "option-data": [
           { "name": "routers", "data": "{{ kea_gateway | default('10.10.10.10') }}" },
           { "name": "domain-name-servers", "data": "{{ kea_dns | default('8.8.8.8,8.8.4.4') }}" }
-        ]
-        
+        ],
+        "reservations": {{ dhcp_reservations | default([]) | to_json }}
       }
     ]
   }

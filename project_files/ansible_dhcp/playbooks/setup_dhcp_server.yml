@@ -40,25 +40,6 @@
       apt:
         update_cache: yes
 
-    - name: Purge ISC Kea packages (if present) to avoid conflicts
-      apt:
-        name: "{{ item }}"
-        state: absent
-        purge: yes
-      loop:
-        - isc-kea
-        - isc-kea-common
-        - isc-kea-dhcp4
-        - isc-kea-dhcp4-server
-      ignore_errors: yes
-      changed_when: false
-
-    - name: Autoremove unused packages after purge
-      apt:
-        autoremove: yes
-      ignore_errors: yes
-      changed_when: false
-
     - name: Install distro Kea packages (kea-common, kea-dhcp4-server)
       apt:
         name:
