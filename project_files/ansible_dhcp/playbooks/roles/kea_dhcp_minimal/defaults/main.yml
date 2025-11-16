@@ -13,4 +13,4 @@ kea_conf_path: /etc/kea/kea-dhcp4.conf
 # kea_service_name will be detected at runtime by the role; override only if necessary
 dhcp_reservations: []
 domain_name: "sne25.nl"
----
+
