@@ -1,0 +1,152 @@
+---
+- name: Build dhcp_reservations on control node
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vm_group: vm_defs
+
+  tasks:
+    - name: Initialize dhcp_reservations
+      set_fact:
+        dhcp_reservations: []
+
+    - name: Build reservations from inventory (vm_defs)
+      set_fact:
+        dhcp_reservations: "{{ dhcp_reservations + [ {
+          'mac': hostvars[item].mac | default(''),
+          'ip': hostvars[item].vm_ip | default(''),
+          'hostname': hostvars[item].inventory_hostname | default(item)
+        } ] }}"
+      loop: "{{ groups[vm_group] | default([]) }}"
+      when: groups[vm_group] is defined
+
+    - name: Debug - show built dhcp_reservations
+      debug:
+        var: dhcp_reservations
+
+- name: Deploy distro Kea DHCP server to DHCP host(s)
+  hosts: dhcp
+  become: true
+  vars:
+    # Adjust subnet/pool if your lab uses different addressing
+    kea_subnet: "10.10.10.0/24"
+    kea_pool: "10.10.10.100 - 10.10.10.200"
+    # Path and template name for kea config
+    kea_conf_path: /etc/kea/kea-dhcp4.conf
+    kea_conf_template: kea-dhcp4.conf.j2
+
+  tasks:
+    - name: Ensure apt cache updated
+      apt:
+        update_cache: yes
+
+    - name: Purge ISC Kea packages (if present) to avoid conflicts
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: yes
+      loop:
+        - isc-kea
+        - isc-kea-common
+        - isc-kea-dhcp4
+        - isc-kea-dhcp4-server
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Autoremove unused packages after purge
+      apt:
+        autoremove: yes
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Install distro Kea packages (kea-common, kea-dhcp4-server)
+      apt:
+        name:
+          - kea-common
+          - kea-dhcp4-server
+        state: present
+      register: kea_install
+
+    - name: Ensure kea config directory exists
+      file:
+        path: "{{ kea_conf_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy kea config (template) with inventory reservations
+      template:
+        src: "{{ kea_conf_template }}"
+        dest: "{{ kea_conf_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        dhcp_reservations: "{{ hostvars['localhost'].dhcp_reservations | default([]) }}"
+        kea_subnet: "{{ kea_subnet }}"
+        kea_pool: "{{ kea_pool }}"
+      notify: Restart kea
+
+    - name: Detect kea systemd unit (common names)
+      stat:
+        path: /lib/systemd/system/kea-dhcp4-server.service
+      register: s_unit_keadhcp
+
+    - name: Detect isc unit alternative
+      stat:
+        path: /lib/systemd/system/isc-kea-dhcp4-server.service
+      register: s_unit_isc
+
+    - name: Set kea_service_name fact
+      set_fact:
+        kea_service_name: >-
+          {% if s_unit_isc.stat.exists %}
+            isc-kea-dhcp4-server
+          {% elif s_unit_keadhcp.stat.exists %}
+            kea-dhcp4-server
+          {% else %}
+            kea-dhcp4-server
+          {% endif %}
+
+    - name: Debug - show detected service name
+      debug:
+        var: kea_service_name
+
+    - name: Reload systemd (safe)
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Ensure Kea service enabled and started
+      service:
+        name: "{{ kea_service_name }}"
+        enabled: yes
+        state: started
+      register: kea_service_result
+
+    - name: Debug - kea service result
+      debug:
+        var: kea_service_result
+
+    - name: Show UDP listeners (diagnostic) - for DHCP port 67
+      command: ss -unlp
+      register: ss_out
+      changed_when: false
+
+    - name: Debug - lines with :67 (diagnostic)
+      debug:
+        var: ss_out.stdout_lines | select('search', ':67') | list
+
+    - name: Optionally allow DHCP port in ufw (if ufw exists)
+      ufw:
+        rule: allow
+        proto: udp
+        port: '67'
+      when: ansible_facts.packages.ufw is defined
+      ignore_errors: yes
+
+  handlers:
+    - name: Restart kea
+      service:
+        name: "{{ kea_service_name }}"
+        state: restarted

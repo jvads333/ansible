@@ -1,0 +1,24 @@
+{
+  "Dhcp4": {
+    "valid-lifetime": 600,
+    "renew-timer": 300,
+    "rebind-timer": 400,
+    "interfaces-config": {
+      "interfaces": [ "{{ kea_server_iface | default('enp1s0') }}" ]
+    },
+
+    "subnet4": [
+      {
+        "subnet": "{{ kea_subnet | default('10.10.10.0/24') }}",
+        "pools": [
+          { "pool": "{{ kea_pool | default('10.10.10.100 - 10.10.10.200') }}" }
+        ],
+        "option-data": [
+          { "name": "routers", "data": "{{ kea_gateway | default('10.10.10.10') }}" },
+          { "name": "domain-name-servers", "data": "{{ kea_dns | default('8.8.8.8,8.8.4.4') }}" }
+        ]
+        
+      }
+    ]
+  }
+}
