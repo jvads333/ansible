@@ -18,9 +18,6 @@
       "max-reclaim-time": 250,
       "unwarned-reclaim-cycles": 5
     },
-    "renew-timer": 900,
-    "rebind-timer": 1800,
-    "valid-lifetime": {{ lease_time | default(3600) }},
     "option-data": [
       { "name": "routers", "data": "{{ router | default('10.10.10.10') }}" },
       { "name": "domain-name-servers", "data": "{{ dns_servers | default(['8.8.8.8','1.1.1.1']) | join(',') }}" },
