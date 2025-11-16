@@ -1,6 +1,0 @@
----
-- name: Restart kea
-  become: true
-  service:
-    name: "{{ kea_service_name | default('isc-kea-dhcp4-server.service') }}"
-    state: restarted

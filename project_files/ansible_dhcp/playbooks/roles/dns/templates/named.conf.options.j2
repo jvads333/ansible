@@ -1,0 +1,15 @@
+options {
+    directory "/var/cache/bind";
+
+    // listen on localhost and the LAN address if available
+    listen-on { 127.0.0.1; {% if ansible_default_ipv4 is defined %} {{ ansible_default_ipv4.address }}; {% endif %} };
+
+    listen-on-v6 { none; };
+
+    // only allow queries from local LAN and localhost
+    allow-query { localhost; 10.10.10.0/24; };
+
+    recursion no;        // authoritative only
+    dnssec-validation auto;
+    auth-nxdomain yes;
+};

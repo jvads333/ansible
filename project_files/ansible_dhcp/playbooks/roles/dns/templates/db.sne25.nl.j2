@@ -1,0 +1,19 @@
+$TTL 3600
+@   IN  SOA ns.sne25.nl. hostmaster.sne25.nl. (
+        {{ lookup('pipe','date +%Y%m%d') }}01 ; serial
+        3600      ; refresh
+        1800      ; retry
+        604800    ; expire
+        86400     ; minimum
+)
+    IN  NS  ns.sne25.nl.
+
+ns  IN  A  {{ hostvars['dns'].vm_ip | default('10.10.10.11') }}
+
+; VM A records generated from inventory group vm_defs
+{% for host in groups['vm_defs'] | sort %}
+{% set ip = hostvars[host].vm_ip | default('') %}
+{% if ip %}
+{{ host }}    IN A    {{ ip }}
+{% endif %}
+{% endfor %}

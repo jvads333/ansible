@@ -1,0 +1,6 @@
+---
+- name: Configure authoritative DNS for sne25.nl
+  hosts: dns
+  become: true
+  roles:
+    - dns
