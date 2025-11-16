@@ -1,28 +1,35 @@
----
-
-- name: Install kea package
+- name: Ensure required packages for repo setup present
   apt:
     name:
-      - isc-kea-dhcp4
+      - curl
+      - gnupg
+      - apt-transport-https
+      - ca-certificates
     state: present
+    update_cache: yes
 
-- name: Ensure kea config directory exists
-  file:
-    path: "{{ kea_conf_path | dirname }}"
-    state: directory
-    mode: '0755'
+- name: Add ISC Cloudsmith repository (setup script) if not already added
+  command: >
+    /bin/sh -c "curl -1sLf 'https://dl.cloudsmith.io/public/isc/kea-3-0/setup.deb.sh' | sudo -E bash"
+  args:
+    creates: /etc/apt/sources.list.d/isc_kea-3-0.list
+  become: true
 
-- name: Deploy minimal kea-dhcp4.conf
-  template:
-    src: kea-dhcp4.conf.j2
-    dest: "{{ kea_conf_path }}"
-    owner: root
-    group: root
-    mode: '0644'
-  notify: Restart kea
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  become: true
 
-- name: Ensure kea service enabled and started
+- name: Install isc-kea metapackage (Kea DHCP)
+  apt:
+    name: isc-kea
+    state: present
+  become: true
+
+- name: Ensure kea-dhcp4 service enabled and started (if package provides it)
   service:
-    name: "{{ kea_service_name }}"
-    enabled: true
+    name: isc-kea-dhcp4
+    enabled: yes
     state: started
+  become: true
+  ignore_errors: yes   # ignore if package installs different service name
