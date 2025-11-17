@@ -5,6 +5,7 @@ users:
     shell: /bin/bash
     lock_passwd: false
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_pwauth: true
     ssh_authorized_keys:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINpNk7z0CqInDd8Aif+sSXei9cPNFopLt6FSGk1za01f root@luxembourg
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGqd2gchj61VVOdnOT9wEzU7F9DR8AXNPn+PWRUaZx8e jeeva@luxembourg
