@@ -1,6 +1,6 @@
 $TTL 3600
 @   IN  SOA ns.sne25.nl. hostmaster.sne25.nl. (
-        {{ lookup('pipe','date +%Y%m%d') }}01 ; serial
+        {{ lookup('pipe','date +%Y%m%d') }}01 ; serial (YYYYMMDDnn)
         3600      ; refresh
         1800      ; retry
         604800    ; expire
@@ -8,12 +8,16 @@ $TTL 3600
 )
     IN  NS  ns.sne25.nl.
 
-ns  IN  A  {{ hostvars['dns'].vm_ip | default('10.10.10.11') }}
+# explicit service records (useful for assignment; falls back to defaults)
+ns   IN  A  {{ hostvars['dns'].vm_ip | default(ansible_default_ipv4.address | default('10.10.10.21')) }}
+dhcp IN  A  {{ hostvars.get('dhcp', {}).get('vm_ip', '10.10.10.12') }}
+nfs  IN  A  {{ hostvars.get('nfs', {}).get('vm_ip', '10.10.10.23') }}
+web  IN  A  {{ hostvars.get('web', {}).get('vm_ip', '10.10.10.24') }}
 
-; VM A records generated from inventory group vm_defs
-{% for host in groups['vm_defs'] | sort %}
+; Additional VM A records generated from inventory group vm_defs
+{% for host in (groups['vm_defs'] | default([])) | sort %}
 {% set ip = hostvars[host].vm_ip | default('') %}
 {% if ip %}
-{{ host }}    IN A    {{ ip }}
+{{ host }}    IN    A    {{ ip }}
 {% endif %}
 {% endfor %}
