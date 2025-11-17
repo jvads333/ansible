@@ -3,6 +3,7 @@
   become: true
   vars_files:
     - ../group_vars/nfs.yml
+
   tasks:
     - name: Ensure apt cache is updated
       apt:
@@ -31,8 +32,8 @@
 
     - name: Export NFS shares (exportfs -ra)
       command: exportfs -ra
-      args:
-        warn: false
+      register: exportfs_export
+      changed_when: exportfs_export.rc == 0
 
     - name: Restart nfs-kernel-server
       service:
