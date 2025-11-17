@@ -8,7 +8,7 @@ $TTL 3600
 )
     IN  NS  ns.sne25.nl.
 
-# explicit service records (useful for assignment; falls back to defaults)
+; explicit service records (useful for assignment; falls back to defaults)
 ns   IN  A  {{ hostvars['dns'].vm_ip | default(ansible_default_ipv4.address | default('10.10.10.21')) }}
 dhcp IN  A  {{ hostvars.get('dhcp', {}).get('vm_ip', '10.10.10.12') }}
 nfs  IN  A  {{ hostvars.get('nfs', {}).get('vm_ip', '10.10.10.23') }}

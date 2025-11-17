@@ -1,0 +1,10 @@
+nfs_share_path: /srv/nfs/shared
+mount_point: /mnt/nfs_shared
+
+# Ensure this matches the IP of your NFS server in inventory.ini
+nfs_server_ip: 10.10.10.23
+
+nfs_network: 10.10.10.0/24
+nfs_export_opts: rw,sync,no_subtree_check
+
+welcome_message: "Hello from NFS server!"

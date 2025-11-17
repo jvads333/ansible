@@ -1,0 +1,57 @@
+- name: Setup NFS server
+  hosts: nfs_server
+  become: true
+  vars_files:
+    - ../group_vars/nfs.yml
+  tasks:
+    - name: Ensure apt cache is updated
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install NFS server package
+      apt:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Create NFS share directory
+      file:
+        path: "{{ nfs_share_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+
+    - name: Ensure /etc/exports contains the export
+      lineinfile:
+        path: /etc/exports
+        regexp: '^{{ nfs_share_path | regex_escape }}\s'
+        line: "{{ nfs_share_path }} {{ nfs_network }}({{ nfs_export_opts }})"
+        create: yes
+
+    - name: Export NFS shares (exportfs -ra)
+      command: exportfs -ra
+      args:
+        warn: false
+
+    - name: Restart nfs-kernel-server
+      service:
+        name: nfs-kernel-server
+        state: restarted
+        enabled: yes
+
+    - name: Put a dummy welcome file in the share
+      copy:
+        dest: "{{ nfs_share_path }}/welcome.txt"
+        content: "{{ welcome_message }}\n"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Show exported shares
+      command: exportfs -v
+      register: exportfs_out
+
+    - name: Display exports
+      debug:
+        var: exportfs_out.stdout_lines

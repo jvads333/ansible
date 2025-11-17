@@ -1,0 +1,46 @@
+- name: Setup NFS clients
+  hosts: nfs_clients
+  become: true
+  vars_files:
+    - ../group_vars/nfs.yml
+
+  tasks:
+    - name: Ensure apt cache is updated
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install NFS client package
+      apt:
+        name: nfs-common
+        state: present
+
+    - name: Create mount directory
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Ensure fstab entry exists for NFS mount
+      mount:
+        path: "{{ mount_point }}"
+        src: "{{ nfs_server_ip }}:{{ nfs_share_path }}"
+        fstype: nfs
+        opts: defaults
+        state: present
+
+    - name: Mount all filesystems from fstab
+      command: mount -a
+      args:
+        warn: false
+
+    - name: Show contents of the mounted directory
+      command: ls -la "{{ mount_point }}"
+      register: ls_out
+      failed_when: false
+
+    - name: Display mount results
+      debug:
+        var: ls_out.stdout_lines
