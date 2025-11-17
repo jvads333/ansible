@@ -23,20 +23,15 @@
         group: root
         mode: '0755'
 
-    - name: Ensure fstab entry exists for NFS mount
+    - name: Ensure fstab entry exists and mount the NFS share
       mount:
         path: "{{ mount_point }}"
-        src: "{{ nfs_server_ip }}:{{ nfs_share_path }}"
+        src: "{{ hostvars['nfs'].ansible_host }}:{{ nfs_share_path }}"
         fstype: nfs
-        opts: defaults
-        state: present
+        opts: defaults,_netdev
+        state: mounted
 
-    - name: Mount all filesystems from fstab
-      command: mount -a
-      args:
-        warn: false
-
-    - name: Show contents of the mounted directory
+    - name: Verify mount (show contents of mounted directory)
       command: ls -la "{{ mount_point }}"
       register: ls_out
       failed_when: false
