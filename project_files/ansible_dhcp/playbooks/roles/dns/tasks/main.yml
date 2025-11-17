@@ -38,8 +38,8 @@
     state: started
     enabled: yes
 
-- name: Wait a moment for bind to be ready
-  wait_for:
-    path: /var/run/named.pid
-    timeout: 10
-  changed_when: false
+- name: Wait for bind pid file
+  ansible.builtin.wait_for:
+    path: /run/named/named.pid
+    timeout: 60
+    state: present
