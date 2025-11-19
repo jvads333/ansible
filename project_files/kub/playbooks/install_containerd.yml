@@ -1,108 +1,59 @@
 ---
-- name: Install containerd + nerdctl-full and verify with hello-world
+- name: Install containerd and fixed nerdctl artifact (minimal)
   hosts: vm_defs
   become: yes
   gather_facts: yes
 
-  vars:
-    # change version here if you want another nerdctl-full release
-    nerdctl_full_version: "2.2.0"
-    tmp_dir: /tmp
-    nerdctl_dest: /usr/local/bin
-    cni_dest: /opt/cni/bin   # included in nerdctl-full, left in archive extract if present
-
-    # mapping ansible_machine -> artifact arch
-    arch_to_asset:
-      x86_64: linux-amd64
-      amd64: linux-amd64
-      aarch64: linux-arm64
-      arm64: linux-arm64
-
   tasks:
-    - name: Install minimal packages (ensure we can download/extract)
+    - name: Install containerd and tools
       apt:
         name:
-          - wget
-          - curl
-          - tar
           - containerd
+          - wget
+          - tar
         state: present
         update_cache: yes
 
-    - name: Ensure containerd service is enabled & started
+    - name: Ensure containerd is started
       systemd:
         name: containerd
-        enabled: yes
         state: started
+        enabled: yes
         daemon_reload: yes
 
-    - name: Determine asset arch for this host
-      set_fact:
-        asset_arch: "{{ arch_to_asset[ansible_machine] | default('linux-amd64') }}"
-
-    - name: Build nerdctl-full filename and URL
-      set_fact:
-        nerdctl_full_name: "nerdctl-full-{{ nerdctl_full_version }}-{{ asset_arch }}.tar.gz"
-        nerdctl_full_url: "https://github.com/containerd/nerdctl/releases/download/v{{ nerdctl_full_version }}/{{ nerdctl_full_name }}"
-        nerdctl_full_tmp: "{{ tmp_dir }}/{{ nerdctl_full_name }}"
-
-    - name: Show chosen artifact (debug)
-      debug:
-        msg:
-          - "asset_arch={{ asset_arch }}"
-          - "nerdctl_full_url={{ nerdctl_full_url }}"
-
-    - name: Download nerdctl-full tarball
+    - name: Download fixed nerdctl tarball (amd64)
       get_url:
-        url: "{{ nerdctl_full_url }}"
-        dest: "{{ nerdctl_full_tmp }}"
+        url: "https://github.com/containerd/nerdctl/releases/download/v2.2.0/nerdctl-2.2.0-linux-amd64.tar.gz"
+        dest: /tmp/nerdctl-2.2.0-linux-amd64.tar.gz
         mode: '0644'
       args:
         timeout: 180
 
-    - name: Extract nerdctl-full into {{ nerdctl_dest }}
+    - name: Extract nerdctl to /usr/local/bin
       unarchive:
-        src: "{{ nerdctl_full_tmp }}"
-        dest: "{{ nerdctl_dest }}"
+        src: /tmp/nerdctl-2.2.0-linux-amd64.tar.gz
+        dest: /usr/local/bin
         remote_src: yes
-        creates: "{{ nerdctl_dest }}/nerdctl"
+        creates: /usr/local/bin/nerdctl
 
-    - name: Ensure extracted binaries are executable
+    - name: Ensure nerdctl is executable
       file:
-        path: "{{ item }}"
-        mode: '0755'
-      loop:
-        - "{{ nerdctl_dest }}/nerdctl"
-        - "{{ nerdctl_dest }}/runc"
-        - "{{ nerdctl_dest }}/containerd"   # may be present in full archive; harmless if absent
-      ignore_errors: yes
-
-    - name: If CNI plugins present in archive, ensure cni dest
-      file:
-        path: "{{ cni_dest }}"
-        state: directory
+        path: /usr/local/bin/nerdctl
         mode: '0755'
 
-    - name: Clean up downloaded archive
-      file:
-        path: "{{ nerdctl_full_tmp }}"
-        state: absent
-
-    - name: Verify nerdctl binary
-      command: "{{ nerdctl_dest }}/nerdctl --version"
+    - name: Verify nerdctl version
+      command: /usr/local/bin/nerdctl --version
       register: nerdctl_ver
       changed_when: false
       failed_when: false
 
     - name: Run hello-world to verify installation
-      shell: |
-        "{{ nerdctl_dest }}/nerdctl" run --rm hello-world
+      shell: /usr/local/bin/nerdctl run --rm hello-world
       register: hello_out
       failed_when: hello_out.rc != 0
 
     - name: Show verification output
       debug:
         msg:
-          - "nerdctl version: {{ nerdctl_ver.stdout | default('unknown') }}"
-          - "hello-world stdout: |"
-          - "{{ hello_out.stdout | default('') }}"
+          - "nerdctl: {{ nerdctl_ver.stdout | default('unknown') }}"
+          - "hello-world output: {{ hello_out.stdout | default('') }}"
