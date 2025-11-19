@@ -1,0 +1,206 @@
+---
+- name: Minimal install of containerd, nerdctl and CNI plugins
+  hosts: vm_defs
+  become: yes
+  gather_facts: yes
+
+  vars:
+    arch_map:
+      x86_64: linux-amd64
+      amd64: linux-amd64
+      aarch64: linux-arm64
+      arm64: linux-arm64
+    nerdctl_dest: /usr/local/bin
+    cni_dest: /opt/cni/bin
+    tmp_dir: /tmp
+    nerdctl_fallback_tag: "v0.24.1"
+    cni_fallback_tag: "v1.2.0"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      changed_when: false
+
+    - name: Install required packages
+      apt:
+        name:
+          - containerd
+          - curl
+          - wget
+          - tar
+          - jq
+        state: present
+
+    - name: Ensure /etc/containerd exists
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: Create default containerd config if missing
+      command: containerd config default
+      register: containerd_default
+      changed_when: false
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Write containerd config when created
+      copy:
+        dest: /etc/containerd/config.toml
+        content: "{{ containerd_default.stdout }}"
+      when: containerd_default.stdout | length > 0
+
+    - name: Ensure SystemdCgroup = true in containerd config
+      shell: |
+        sed -ri '0,/(SystemdCgroup\s*=\s*)(false|true)/s//\1true/' /etc/containerd/config.toml
+      args:
+        warn: false
+      register: set_cgroup
+      failed_when: false
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Set release arch string
+      set_fact:
+        release_arch: "{{ arch_map[ansible_machine] | default('linux-amd64') }}"
+
+    # ---------- nerdctl ----------
+    - name: Get latest nerdctl release info from GitHub
+      uri:
+        url: "https://api.github.com/repos/containerd/nerdctl/releases/latest"
+        return_content: yes
+        status_code: 200
+      register: nerdctl_release
+      failed_when: false
+
+    - name: Parse nerdctl tag (fallback if parse fails)
+      set_fact:
+        nerdctl_tag: >-
+          {{
+            ((nerdctl_release.content | default('{}')) | from_json).tag_name
+            | default(nerdctl_fallback_tag)
+          }}
+
+    - name: Compute nerdctl version, filename and URL
+      set_fact:
+        nerdctl_ver: "{{ nerdctl_tag | regex_replace('^v','') }}"
+        nerdctl_filename: "nerdctl-{{ nerdctl_ver }}-{{ release_arch }}.tar.gz"
+        nerdctl_url: "https://github.com/containerd/nerdctl/releases/download/{{ nerdctl_tag }}/{{ nerdctl_filename }}"
+
+    - name: Debug nerdctl vars
+      debug:
+        msg:
+          - "nerdctl_tag={{ nerdctl_tag }}"
+          - "nerdctl_url={{ nerdctl_url }}"
+
+    - name: Download nerdctl tarball
+      get_url:
+        url: "{{ nerdctl_url }}"
+        dest: "{{ tmp_dir }}/{{ nerdctl_filename }}"
+        mode: '0644'
+      args:
+        timeout: 120
+      register: dl_nerdctl
+      failed_when: dl_nerdctl is failed
+
+    - name: Extract nerdctl to {{ nerdctl_dest }}
+      unarchive:
+        src: "{{ tmp_dir }}/{{ nerdctl_filename }}"
+        dest: "{{ nerdctl_dest }}"
+        remote_src: yes
+        creates: "{{ nerdctl_dest }}/nerdctl"
+
+    - name: Ensure nerdctl is executable
+      file:
+        path: "{{ nerdctl_dest }}/nerdctl"
+        mode: '0755'
+
+    # ---------- CNI plugins ----------
+    - name: Get latest CNI plugins release info from GitHub
+      uri:
+        url: "https://api.github.com/repos/containernetworking/plugins/releases/latest"
+        return_content: yes
+        status_code: 200
+      register: cni_release
+      failed_when: false
+
+    - name: Parse CNI tag (fallback if parse fails)
+      set_fact:
+        cni_tag: >-
+          {{
+            ((cni_release.content | default('{}')) | from_json).tag_name
+            | default(cni_fallback_tag)
+          }}
+
+    - name: Compute CNI filename and URL
+      set_fact:
+        cni_ver: "{{ cni_tag | regex_replace('^v','') }}"
+        cni_filename: "cni-plugins-{{ release_arch }}-v{{ cni_ver }}.tgz"
+        cni_url: "https://github.com/containernetworking/plugins/releases/download/{{ cni_tag }}/{{ cni_filename }}"
+
+    - name: Debug cni vars
+      debug:
+        msg:
+          - "cni_tag={{ cni_tag }}"
+          - "cni_url={{ cni_url }}"
+
+    - name: Download CNI plugins tarball
+      get_url:
+        url: "{{ cni_url }}"
+        dest: "{{ tmp_dir }}/{{ cni_filename }}"
+        mode: '0644'
+      args:
+        timeout: 120
+      register: dl_cni
+      failed_when: dl_cni is failed
+
+    - name: Ensure CNI directory exists
+      file:
+        path: "{{ cni_dest }}"
+        state: directory
+        mode: '0755'
+
+    - name: Extract CNI plugins into {{ cni_dest }}
+      unarchive:
+        src: "{{ tmp_dir }}/{{ cni_filename }}"
+        dest: "{{ cni_dest }}"
+        remote_src: yes
+        creates: "{{ cni_dest }}/bridge"
+
+    - name: Remove downloaded archives
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ tmp_dir }}/{{ nerdctl_filename }}"
+        - "{{ tmp_dir }}/{{ cni_filename }}"
+
+    - name: Verify nerdctl binary
+      command: "{{ nerdctl_dest }}/nerdctl --version"
+      register: nerdctl_ver_out
+      changed_when: false
+      failed_when: false
+
+    - name: Run hello-world with nerdctl to verify
+      shell: |
+        {{ nerdctl_dest }}/nerdctl run --rm hello-world
+      register: hello_out
+      failed_when: hello_out.rc != 0
+      environment:
+        # ensure containerd socket visible if needed
+        XDG_RUNTIME_DIR: "/run/user/1000"
+      ignore_errors: false
+
+    - name: Show verification output
+      debug:
+        msg:
+          - "nerdctl: {{ nerdctl_ver_out.stdout | default('unknown') }}"
+          - "hello-world output: |"
+          - "{{ hello_out.stdout | default('') }}"
+

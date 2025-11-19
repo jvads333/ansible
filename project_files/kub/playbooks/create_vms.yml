@@ -1,0 +1,127 @@
+---
+- name: Create VMs from inventory (vm_defs)
+  hosts: vm_defs
+  connection: local
+  become: yes
+  gather_facts: false
+
+  vars:
+    playbook_tmp_dir: "{{ playbook_dir }}/tmp"
+
+  pre_tasks:
+    - name: Create temporary working directory
+      file:
+        path: "{{ playbook_tmp_dir }}"
+        state: directory
+        mode: '0755'
+      run_once: true
+
+    - name: Ensure required packages are present (run once)
+      apt:
+        name:
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - cloud-image-utils
+          - virtinst
+        state: present
+        update_cache: yes
+      run_once: true
+
+    - name: Ensure images dir exists (run once)
+      file:
+        path: "{{ libvirt_dir }}"
+        state: directory
+        mode: '0755'
+      run_once: true
+
+    - name: Check if base image exists (run once)
+      stat:
+        path: "{{ base_img }}"
+      register: img_stat
+      run_once: true
+
+    - name: Download cloud image if missing (run once)
+      get_url:
+        url: "{{ cloud_image_url }}"
+        dest: "{{ base_img }}"
+        mode: '0644'
+        force: no
+      when: not img_stat.stat.exists
+      run_once: true
+
+  tasks:
+    - name: Set vm paths for {{ inventory_hostname }}
+      set_fact:
+        vm_disk: "{{ libvirt_dir }}/{{ inventory_hostname }}.qcow2"
+        seed_iso: "{{ libvirt_dir }}/{{ inventory_hostname }}-seed.iso"
+
+    - name: Render cloud-init user-data (keep same username) for {{ inventory_hostname }}
+      template:
+        src: templates/user.yml.j2
+        dest: "{{ playbook_tmp_dir }}/ci-user-{{ inventory_hostname }}.yml"
+        mode: '0644'
+      vars:
+        hostname: "{{ inventory_hostname }}"
+        ssh_pub_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') | default(lookup('file','~/.ssh/id_rsa.pub'), true) }}"
+
+    - name: Write meta-data for {{ inventory_hostname }}
+      copy:
+        dest: "{{ playbook_tmp_dir }}/ci-meta-{{ inventory_hostname }}.yml"
+        content: |
+          instance-id: {{ inventory_hostname }}
+          local-hostname: {{ inventory_hostname }}
+        mode: '0644'
+
+    - name: Choose network template for static DHCP server vs clients
+      set_fact:
+        net_template: >-
+          {{ 'templates/network-dhcp.yml.j2' if inventory_hostname == 'dhcp' else 'templates/network-static.yml.j2' }}
+
+    - name: Render network-config for {{ inventory_hostname }}
+      template:
+        src: "{{ net_template }}"
+        dest: "{{ playbook_tmp_dir }}/ci-network-{{ inventory_hostname }}.yml"
+        mode: '0644'
+      vars:
+        addr: "{{ vm_ip }}"
+        gw: "{{ gateway }}"
+        nameservers: ["8.8.8.8","1.1.1.1"]
+        iface_name: "enp1s0"
+
+    - name: Create qcow2 disk (backed by base image) for {{ inventory_hostname }}
+      command: >
+        qemu-img create -f qcow2 -b {{ base_img }} -F qcow2 {{ vm_disk }} {{ disk_size }}
+      args:
+        creates: "{{ vm_disk }}"
+
+    - name: Create cloud-init seed ISO for {{ inventory_hostname }}
+      command: >
+        cloud-localds --network-config={{ playbook_tmp_dir }}/ci-network-{{ inventory_hostname }}.yml
+                     {{ seed_iso }}
+                     {{ playbook_tmp_dir }}/ci-user-{{ inventory_hostname }}.yml
+                     {{ playbook_tmp_dir }}/ci-meta-{{ inventory_hostname }}.yml
+      args:
+        creates: "{{ seed_iso }}"
+        chdir: "{{ playbook_tmp_dir }}"
+
+    - name: Create VM (virt-install import) and attach to bridge for {{ inventory_hostname }}
+      command: >
+        virt-install --name {{ inventory_hostname }}
+                     --memory {{ memory_mb }}
+                     --vcpus {{ vcpus }}
+                     --disk path={{ vm_disk }},format=qcow2
+                     --disk path={{ seed_iso }},device=cdrom
+                     --network bridge={{ bridge_name }},model=virtio{% if mac is defined %},mac={{ mac }}{% endif %}
+                     --os-variant ubuntu22.04
+                     --import
+                     --noautoconsole
+      args:
+        creates: "/etc/libvirt/qemu/{{ inventory_hostname }}.xml"
+
+  post_tasks:
+    - name: Clean up temporary cloud-init files
+      file:
+        path: "{{ playbook_tmp_dir }}"
+        state: absent
+      run_once: true

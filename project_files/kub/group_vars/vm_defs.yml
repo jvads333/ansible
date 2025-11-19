@@ -1,0 +1,14 @@
+# group_vars/vm_defs.yml
+libvirt_dir: /var/lib/libvirt/images
+base_img: /var/lib/libvirt/images/ubuntu-22.04-server-cloudimg-amd64.img
+cloud_image_url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+bridge_name: kvmbr1
+memory_mb: 2048
+vcpus: 4
+disk_size: 20G
+playbook_dir: .
+iface_name: enp1s0
+gateway: 10.10.10.10
+nameservers:
+  - "8.8.8.8"
+  - "1.1.1.1"
