@@ -22,6 +22,19 @@
         replace: '# \\1'
       register: fstab_mod
 
+    - name: Ensure br_netfilter module is loaded now
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Ensure br_netfilter loads at boot
+      copy:
+        dest: /etc/modules-load.d/br_netfilter.conf
+        content: "br_netfilter\n"
+        owner: root
+        group: root
+        mode: '0644'
+    
     - name: Enable required sysctls for Kubernetes networking
       sysctl:
         name: "{{ item.name }}"
@@ -33,10 +46,8 @@
         - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
         - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
 
-    - name: Ensure br_netfilter module is loaded
-      modprobe:
-        name: br_netfilter
-        state: present
+    - name: Reload sysctl settings
+      command: sysctl --system
 
     - name: Install apt dependencies
       apt:
