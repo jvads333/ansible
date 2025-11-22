@@ -107,8 +107,6 @@
       register: kubeadm_init
       environment:
         KUBECONFIG: "/root/.kube/config"
-      args:
-        warn: false
 
     - name: Create .kube for user jeeva and copy admin.conf
       file:
