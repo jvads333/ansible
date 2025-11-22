@@ -117,6 +117,12 @@
         group: jeeva
         mode: '0700'
 
+    - name: Wait for kubeadm admin.conf to appear
+      wait_for:
+        path: /etc/kubernetes/admin.conf
+        state: present
+        timeout: 300 
+        
     - name: Copy admin kubeconfig for user jeeva
       copy:
         src: /etc/kubernetes/admin.conf
