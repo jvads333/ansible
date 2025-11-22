@@ -1,0 +1,133 @@
+---
+- name: Install kubeadm and initialize control-plane (minimal for Task 4)
+  hosts: vm1
+  become: yes
+  gather_facts: yes
+
+  vars:
+    pod_network_cidr: "10.244.0.0/16"       # change to match your CNI (Flannel uses 10.244.0.0/16)
+    kubernetes_apt_repo: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
+    kube_key_url: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key"
+
+  tasks:
+
+    - name: Disable swap immediately
+      command: swapoff -a
+      changed_when: false
+
+    - name: Comment out swap entries in /etc/fstab
+      replace:
+        path: /etc/fstab
+        regexp: '(^.*\s+swap\s+.*$)'
+        replace: '# \\1'
+      register: fstab_mod
+
+    - name: Enable required sysctls for Kubernetes networking
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: 'net.ipv4.ip_forward', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+
+    - name: Ensure br_netfilter module is loaded
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Install apt dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Add Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: "{{ kube_key_url }}"
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: "deb {{ kubernetes_apt_repo }} /"
+        filename: kubernetes
+      register: add_kube_repo
+
+    - name: Install kubelet, kubeadm and kubectl
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Ensure /etc/containerd exists
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: Write containerd config with SystemdCgroup = true
+      shell: |
+        containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Restart containerd and enable kubelet
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - containerd
+        - kubelet
+
+    - name: Initialize Kubernetes control-plane
+      command: >
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --apiserver-advertise-address={{ ansible_host }}
+      register: kubeadm_init
+      environment:
+        KUBECONFIG: "/root/.kube/config"
+      args:
+        warn: false
+
+    - name: Create .kube for user jeeva and copy admin.conf
+      file:
+        path: /home/jeeva/.kube
+        state: directory
+        owner: jeeva
+        group: jeeva
+        mode: '0700'
+
+    - name: Copy admin kubeconfig for user jeeva
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/jeeva/.kube/config
+        owner: jeeva
+        group: jeeva
+        mode: '0644'
+
+    - name: Generate join command and save to /root/join_node.sh
+      command: kubeadm token create --print-join-command
+      register: join_cmd
+      changed_when: false
+
+    - name: Write join script file
+      copy:
+        dest: /root/join_node.sh
+        content: |
+          #!/bin/bash
+          {{ join_cmd.stdout }}
+        mode: '0755'
+
+    - name: Show a short summary from kubeadm init
+      debug:
+        msg: "{{ kubeadm_init.stdout_lines[:10] }}"
