@@ -1,0 +1,107 @@
+---
+# PLAY 1: Get the Join Command from the Master Node
+- name: Retrieve Join Command from Master
+  hosts: vm1
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Generate join command
+      command: kubeadm token create --print-join-command
+      register: join_command_raw
+
+    - name: Set join command as a fact
+      set_fact:
+        join_command: "{{ join_command_raw.stdout }}"
+
+# PLAY 2: Configure the Worker Node
+- name: Install Prerequisites and Join Cluster
+  hosts: vm2  # Target the worker node
+  become: yes
+  gather_facts: yes
+
+  vars:
+    kubernetes_apt_repo: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
+    kube_key_url: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key"
+
+  tasks:
+    # --- START OF COMMON CONFIGURATION (Same as Master) ---
+    - name: Disable swap immediately
+      command: swapoff -a
+      changed_when: false
+
+    - name: Comment out swap entries in /etc/fstab
+      replace:
+        path: /etc/fstab
+        regexp: '(^.*\s+swap\s+.*$)'
+        replace: '# \\1'
+
+    - name: Ensure br_netfilter module is loaded
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Enable sysctl settings for Kubernetes
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: 'net.ipv4.ip_forward', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+
+    - name: Reload sysctl
+      command: sysctl --system
+
+    - name: Install dependencies
+      apt:
+        name: [apt-transport-https, ca-certificates, curl, gnupg]
+        state: present
+        update_cache: yes
+
+    - name: Add Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: "{{ kube_key_url }}"
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: "deb {{ kubernetes_apt_repo }} /"
+        filename: kubernetes
+
+    - name: Install kubelet, kubeadm, kubectl
+      apt:
+        name: [conntrack, kubelet, kubeadm, kubectl]
+        state: present
+        update_cache: yes
+
+    - name: Create containerd directory
+      file:
+        path: /etc/containerd
+        state: directory
+
+    # CRITICAL FIX: Ensure SystemdCgroup is true on the worker too
+    - name: Write containerd config with SystemdCgroup = true
+      shell: |
+        containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Restart containerd and kubelet
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - containerd
+        - kubelet
+    # --- END OF COMMON CONFIGURATION ---
+
+    # --- WORKER SPECIFIC TASK ---
+    - name: Join the Kubernetes Cluster
+      command: "{{ hostvars['vm1']['join_command'] }}"
+      args:
+        # Check if /etc/kubernetes/kubelet.conf exists. 
+        # If it does, the node is already joined, so skip this.
+        creates: /etc/kubernetes/kubelet.conf 
