@@ -122,7 +122,7 @@
         path: /etc/kubernetes/admin.conf
         state: present
         timeout: 300 
-        
+
     - name: Copy admin kubeconfig for user jeeva
       copy:
         src: /etc/kubernetes/admin.conf
@@ -130,6 +130,7 @@
         owner: jeeva
         group: jeeva
         mode: '0644'
+        remote_src: yes
 
     - name: Generate join command and save to /root/join_node.sh
       command: kubeadm token create --print-join-command
